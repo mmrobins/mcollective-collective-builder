@@ -98,10 +98,13 @@ def create_member(collective, subcollectives, identity, stompserver, stompuser, 
     pluginsource  = "#{BASEDIR}/plugins"
     clonedir      = "#{BASEDIR}/collective/base"
 
-    FileUtils.mkdir_p instance_home
-    FileUtils.cd(instance_home)
+    #FileUtils.mkdir_p instance_home
+    #FileUtils.cd(instance_home)
 
-    system("git clone -q file:///#{clonedir} .")
+    #system("git clone -q file:///#{clonedir} .")
+    #require 'ruby-debug'; debugger; 1;
+    system("ln -s #{clonedir} #{instance_home}")
+    FileUtils.cd(instance_home)
     system("git checkout -q #{version}")
 
     render_template("#{templatedir}/server.cfg.erb", "#{instance_home}/etc/server.cfg", binding)
