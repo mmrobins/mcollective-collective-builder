@@ -46,15 +46,9 @@ end
 def start_member(identity)
     raise "You need to create a collective first using rake create" if get_members.size == 0
 
-    instance_home = "#{BASEDIR}/collective/#{identity}"
-
     return true if member_running?(identity)
 
-    FileUtils.cd(instance_home)
-
-    system("ruby -I #{instance_home}/lib mcollectived.rb --config #{instance_home}/etc/server.cfg --pidfile #{BASEDIR}/pids/#{identity}.pid")
-
-    FileUtils.cd(BASEDIR)
+    system("ruby -I collective/base/lib collective/base/mcollectived.rb --config #{BASEDIR}/etc/#{identity}/server.cfg --pidfile #{BASEDIR}/pids/#{identity}.pid")
 end
 
 def stop_member(identity)
@@ -72,7 +66,7 @@ end
 def get_members
     return [] unless File.exist?("#{BASEDIR}/collective")
 
-    Dir.entries("#{BASEDIR}/collective").select{|m| (m[0,1] != "." && m != "base")}
+    Dir.entries("#{BASEDIR}/etc").select{|m| m[0,1] != "." && m != "client" && File.directory?("#{BASEDIR}/etc/#{m}")}
 end
 
 def setup_base(gitrepo, branch)
@@ -92,46 +86,53 @@ def get_random_file(type)
     File.join(templatedir, type, files[rand(files.size)])
 end
 
-def create_member(collective, subcollectives, identity, stompserver, stompuser, stomppass, stompport, stompssl, version, instance_home=nil)
-    instance_home = "#{BASEDIR}/collective/#{identity}" if instance_home.nil?
+def create_member(collective, subcollectives, identity, stompserver, stompuser, stomppass, stompport, stompssl, version, instance_home, shared_repo)
     templatedir   = "#{BASEDIR}/templates"
     pluginsource  = "#{BASEDIR}/plugins"
-    clonedir      = "#{BASEDIR}/collective/base"
 
-    FileUtils.mkdir_p instance_home
-    FileUtils.cd(instance_home)
+    FileUtils.mkdir_p "#{BASEDIR}/etc/#{identity}"
+    if shared_repo == 'y'
+    else
+      instance_home = "#{BASEDIR}/collective/#{identity}" if instance_home.nil?
+      clonedir      = "#{BASEDIR}/collective/base"
 
-    system("git clone -q file:///#{clonedir} .")
-    system("git checkout -q #{version}")
+      FileUtils.mkdir_p instance_home
+      FileUtils.cd(instance_home)
 
-    render_template("#{templatedir}/server.cfg.erb", "#{instance_home}/etc/server.cfg", binding)
-    render_template("#{templatedir}/client.cfg.erb", "#{instance_home}/etc/client.cfg", binding)
+      system("git clone -q file:///#{clonedir} .")
+      system("git checkout -q #{version}")
+    end
 
-    puts "Created a new instance #{identity} in #{instance_home}"
+    render_template("#{templatedir}/server.cfg.erb", "etc/#{identity}/server.cfg", binding)
+    render_template("#{templatedir}/client.cfg.erb", "etc/#{identity}/client.cfg", binding)
+
+    puts "Created a new instance #{identity}"
     puts "=" * 40
 end
 
 def copy_facts
     get_members.each do |member|
-        FileUtils.cp(get_random_file("facts"), "#{BASEDIR}/collective/#{member}/etc/facts.yaml")
+        FileUtils.cp(get_random_file("facts"), "#{BASEDIR}/etc/#{member}/facts.yaml")
     end
 end
 
 def copy_classes
     get_members.each do |member|
-        FileUtils.cp(get_random_file("classes"), "#{BASEDIR}/collective/#{member}/etc/classes.txt")
+        FileUtils.cp(get_random_file("classes"), "#{BASEDIR}/etc/#{member}/classes.txt")
     end
 end
 
 def copy_plugins
     FileUtils.cd BASEDIR
-    pluginsource  = "#{BASEDIR}/plugins"
+    pluginsource  = "#{BASEDIR}/plugin_source"
 
     get_members.each do |member|
-        FileUtils.cp_r("#{pluginsource}/.", "#{BASEDIR}/collective/#{member}/plugins/mcollective")
+        FileUtils.mkdir_p "#{BASEDIR}/plugins/#{member}/mcollective"
+        FileUtils.cp_r("#{pluginsource}/.", "#{BASEDIR}/plugins/#{member}/mcollective")
     end
 
-    FileUtils.cp_r("#{pluginsource}/.", "#{BASEDIR}/client/plugins/mcollective")
+    FileUtils.mkdir_p "#{BASEDIR}/plugins/client/mcollective"
+    FileUtils.cp_r("#{pluginsource}/.", "#{BASEDIR}/plugins/client/mcollective")
 end
 
 def stop_all
@@ -172,7 +173,7 @@ task :stompserver do
 
     FileUtils.mkdir_p "logs"
 
-    system("stompserver --config etc/stompserver.conf")
+    system("stompserver --config stompserver.conf")
 
     puts
     puts "Stompserver terminated use rake clean to clean up logs etc"
@@ -183,8 +184,8 @@ task :shell do
     raise "Don't know what shell to run you have no SHELL environment variable" unless ENV.include?("SHELL")
     raise "You need to create a collective first using rake create" if get_members.size == 0
 
-    ENV["MCOLLECTIVE_EXTRA_OPTS"]= "--config=#{BASEDIR}/client/etc/client.cfg"
-    ENV["RUBYLIB"] = "#{BASEDIR}/client/lib"
+    ENV["MCOLLECTIVE_EXTRA_OPTS"]= "--config=#{BASEDIR}/etc/client/client.cfg"
+    ENV["RUBYLIB"] = "#{BASEDIR}/collective/base/lib"
 
     puts
     puts "Running #{ENV['SHELL']} to start a subshell with MCOLLECTIVE_EXTRA_OPTS and RUBYLIB set"
@@ -247,8 +248,9 @@ task :create do
     stomppass   = ask("Stomp Password", "MC_PASSWORD", "secret")
     gitrepo     = ask("GIT Source Repository", "MC_SOURCE", "git://github.com/puppetlabs/marionette-collective.git")
     branch      = ask("Remote branch name", "MC_SOURCE_BRANCH", "master")
+    shared_repo = ask("Use same repo for all via symlinks", "MC_SHARED_REPO", "y")
     version     = ask("MCollective Version", "MC_VERSION", branch == "master"? "master" : branch)
-    count       = ask("Instances To Create", "MC_COUNT", 10).to_i
+    count       = ask("Instances To Create", "MC_COUNT", 2).to_i
     countstart  = ask("Instance Count Start", "MC_COUNT_START", 0).to_i
     hostname    = `hostname -f`.chomp
 
@@ -257,10 +259,10 @@ task :create do
     setup_base(gitrepo, branch)
 
     count.times do |i|
-        create_member(collective, collectives, "#{hostname}-#{countstart + i}", stompserver, stompuser, stomppass, stompport, stompssl, version)
+        create_member(collective, collectives, "#{hostname}-#{countstart + i}", stompserver, stompuser, stomppass, stompport, stompssl, version, nil, shared_repo)
     end
 
-    create_member(collective, collectives, "client", stompserver, stompuser, stomppass, stompport, stompssl, version, "#{BASEDIR}/client")
+    create_member(collective, collectives, "client", stompserver, stompuser, stomppass, stompport, stompssl, version, "#{BASEDIR}/client", shared_repo)
 
     copy_plugins
     copy_facts
@@ -291,7 +293,7 @@ end
 
 desc "Shut down and remove the collective"
 task :clean => [:stop] do
-    CLEANFILES = ["collective", "pids", "logs", "client"]
+    CLEANFILES = ["collective", "pids", "logs", "client", "plugins", "etc"]
     FileUtils.rm_rf(CLEANFILES)
 end
 
