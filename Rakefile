@@ -48,7 +48,7 @@ def start_member(identity)
 
     return true if member_running?(identity)
 
-    system("ruby -I collective/base/lib collective/base/mcollectived.rb --config #{BASEDIR}/etc/#{identity}/server.cfg --pidfile #{BASEDIR}/pids/#{identity}.pid")
+    system("ruby -I #{BASEDIR}/collective/base/lib collective/base/mcollectived.rb --config #{BASEDIR}/etc/#{identity}/server.cfg --pidfile #{BASEDIR}/pids/#{identity}.pid")
 end
 
 def stop_member(identity)
