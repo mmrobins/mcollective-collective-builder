@@ -37,7 +37,7 @@ def member_running?(identity)
     if File.directory?("/proc")
       return pid.to_i if File.exist?("/proc/#{pid}")
     else
-      return pid.to_i if `ps -o pid`.split("\n").map {|p| p.to_i}.include?(pid.to_i)
+      return pid.to_i if `ps -e -o pid`.split("\n").map {|p| p.to_i}.include?(pid.to_i)
     end
 
     false
