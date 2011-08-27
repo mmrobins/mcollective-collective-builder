@@ -186,13 +186,10 @@ task :shell do
 
     ENV["MCOLLECTIVE_EXTRA_OPTS"]= "--config=#{BASEDIR}/etc/client/client.cfg"
     ENV["RUBYLIB"] = "#{BASEDIR}/collective/base/lib"
+    ENV["PATH"]    = "#{BASEDIR}/collective/base:$PATH"
 
     puts
-    puts "Running #{ENV['SHELL']} to start a subshell with MCOLLECTIVE_EXTRA_OPTS and RUBYLIB set"
-    puts
-    puts "Please run the following once started: "
-    puts
-    puts "    PATH=`pwd`/client:$PATH"
+    puts "Running #{ENV['SHELL']} to start a subshell with MCOLLECTIVE_EXTRA_OPTS, PATH and RUBYLIB set"
     puts
     puts "To return to your normal shell and collective just type exit"
     puts
